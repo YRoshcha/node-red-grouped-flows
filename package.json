@@ -1,6 +1,6 @@
 {
   "name": "@shockers/node-red-plugin-grouped-flows",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Replaces the built-in Node-RED flows tab bar with a grouped two-tier tab bar to improve navigation of large Node-RED environments.",
   "author": "Sven Hockers",
   "license": "Apache-2.0",
