@@ -1,17 +1,23 @@
 {
-  "name": "@shockers/node-red-plugin-grouped-flows",
-  "version": "0.4.1",
-  "description": "Replaces the built-in Node-RED flows tab bar with a grouped two-tier tab bar to improve navigation of large Node-RED environments.",
+  "name": "@YRoshcha/node-red-plugin-grouped-flows",
+  "version": "1.0.0",
+  "description": "Replaces the built-in Node-RED flows tab bar with a grouped two-tier tab bar to improve navigation of large Node-RED environments. Fork of @shockers/node-red-plugin-grouped-flows with Node-RED 5.x compatibility fixes.",
   "author": "Sven Hockers",
+  "contributors": [
+    {
+      "name": "YRoshcha",
+      "url": "https://github.com/yroshcha"
+    }
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SvenHockers/node-red-grouped-flows.git"
+    "url": "git+https://github.com/uklon/node-red-grouped-flows.git"
   },
   "bugs": {
-    "url": "https://github.com/SvenHockers/node-red-grouped-flows/issues"
+    "url": "https://github.com/uklon/node-red-grouped-flows/issues"
   },
-  "homepage": "https://github.com/SvenHockers/node-red-grouped-flows#readme",
+  "homepage": "https://github.com/uklon/node-red-grouped-flows#readme",
   "keywords": [
     "node-red",
     "node-red-plugin",
@@ -23,7 +29,9 @@
     "grouped-flows.html",
     "i18n",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGES.md",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=14"
