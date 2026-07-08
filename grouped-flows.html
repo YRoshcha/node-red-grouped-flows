@@ -1,14 +1,52 @@
+<!--
+  node-red-plugin-grouped-flows (YRoshcha fork)
+
+  Original work Copyright Sven Hockers (SvenHockers)
+  https://github.com/SvenHockers/node-red-grouped-flows
+
+  Modifications (Node-RED 5.x compatibility) Copyright YRoshcha.
+  See CHANGES.md in this package for the full patch-by-patch writeup.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
 <script type="text/javascript">
     (function() {
         "use strict";
 
         const PLUGIN_ID = "nr-grouped-flows";
-        const PLUGIN_VERSION = "0.4.1";
+        const PLUGIN_VERSION = "0.4.1-nr5patch6";
         const ORIGINAL_UL_ID = "red-ui-workspace-tabs";
         const CONTAINER_ID = "nr-grouped-flows";
         const GROUPS_UL_ID = "nr-grouped-flows-groups";
         const FLOWS_UL_ID = "nr-grouped-flows-flows";
         const WORKSPACE_ROOT_ID = "red-ui-workspace";
+        // NR5 moved #red-ui-workspace-tabs (and its -shade sibling) out of
+        // #red-ui-workspace and into a new #red-ui-header-tabs container in
+        // the redesigned header. On NR4 this element simply doesn't exist,
+        // so selecting it is always a harmless no-op (empty jQuery set).
+        const HEADER_TABS_ID = "red-ui-header-tabs";
+        // Shared ancestor of #red-ui-header and #red-ui-main-container in NR5.
+        // Both read the SAME --red-ui-header-height custom property (header
+        // uses it for its own height, main-container uses it as its top
+        // offset) - so bumping it here on their common parent is what
+        // actually reflows the Palette/Workspace/Sidebar row downward.
+        const EDITOR_ROOT_ID = "red-ui-editor";
+        // Marker class added to #red-ui-workspace only when headerTabsMode
+        // is true (NR5). Lets the CSS distinguish "tab bar lives inside
+        // #red-ui-workspace, chart needs its own top-offset" (NR4) from
+        // "tab bar lives in the header, main-container is already shifted
+        // down via --red-ui-header-height, chart needs NO extra offset" (NR5).
+        const HEADER_MODE_CLASS = "nr-grouped-flows-header-mode";
         const WORKSPACE_ENABLED_CLASS = "nr-grouped-flows-enabled";
         const WORKSPACE_GROUP_PROPERTY = "group";
         const WORKSPACE_SINGLE_ROW_CLASS = "nr-grouped-flows-single-row";
@@ -101,7 +139,12 @@
                 originalEditFlow: null,
                 originalXHROpen: null,
                 originalXHRSend: null,
-                persistedGroups: null
+                persistedGroups: null,
+                // T020 (patch): true when the core tab bar was found living
+                // inside #red-ui-header-tabs (NR5) rather than nested in
+                // #red-ui-workspace (NR4). Drives whether we also need to
+                // grow --red-ui-header-height on #red-ui-editor.
+                headerTabsMode: false
             };
         }
 
@@ -110,6 +153,33 @@
             // T016: state initialised from factory instead of inline literal.
             const state = createInitialState();
             const adminBase = (RED.settings.httpAdminRoot || "").replace(/\/$/, "");
+
+            // T020 (patch): NR5 compat. State classes (enabled / single-row) drive
+            // CSS that positions the grouped tab bar and sizes the shade behind it.
+            // Pre-NR5 that CSS only needed #red-ui-workspace, because that's where
+            // the tab bar actually lived. NR5 relocated the tab bar (and shade)
+            // into #red-ui-header-tabs, which is a sibling of #red-ui-workspace,
+            // not a descendant - so descendant selectors scoped to #red-ui-workspace
+            // stopped matching. We apply the same classes to both containers; the
+            // CSS matches on whichever one is actually present.
+            //
+            // On NR5 there's a second, separate problem: #red-ui-header-tabs
+            // sits inside #red-ui-header, which is position:absolute with a
+            // fixed height (--red-ui-header-height, 40px by default). Our
+            // second tab row doesn't fit in that box and spills out below it,
+            // straight onto #red-ui-main-container (Palette/Workspace/Sidebar),
+            // which starts immediately at top: var(--red-ui-header-height).
+            // Both #red-ui-header and #red-ui-main-container read that same
+            // variable from their shared parent, #red-ui-editor - so bumping
+            // it there (only when we've confirmed we're in NR5 header mode)
+            // grows the header AND pushes the row below down, in one move.
+            function getWorkspaceStateTargets() {
+                var selector = "#" + WORKSPACE_ROOT_ID + ", #" + HEADER_TABS_ID;
+                if (state.headerTabsMode) {
+                    selector += ", #" + EDITOR_ROOT_ID;
+                }
+                return $(selector);
+            }
 
             function debug(message, data) {
                 if (!debugEnabled || !window.console || typeof console.log !== "function") {
@@ -915,6 +985,28 @@
                 state.lastRenderedActiveFlowTab = null;
             }
 
+            // T020 (patch): measure the tab stack's REAL rendered height
+            // instead of trusting a fixed pixel guess. A guess that's even
+            // a few px short leaves a visible sliver where the canvas (and
+            // its scrollbar) peeks up into the header; a guess that's too
+            // tall leaves a dead gap. Row height can also legitimately
+            // differ a little by theme/font/zoom. Only meaningful in NR5
+            // header mode - on NR4 the tab bar's height doesn't drive any
+            // outer layout box, so there's nothing to sync.
+            function syncHeaderHeight(dualRowVisible) {
+                if (!state.headerTabsMode || !state.container || !state.container.length) {
+                    return;
+                }
+                const measured = state.container.outerHeight();
+                if (!measured) {
+                    return;
+                }
+                const varName = dualRowVisible
+                    ? "--nr-grouped-flows-header-height-dual"
+                    : "--nr-grouped-flows-header-height-single";
+                $("#" + EDITOR_ROOT_ID).css(varName, measured + "px");
+            }
+
             function setFlowRowVisible(visible) {
                 const flowWrapper = $("#" + FLOWS_UL_ID).closest(".red-ui-tabs");
                 if (flowWrapper.length) {
@@ -924,7 +1016,11 @@
                         flowWrapper.hide();
                     }
                 }
-                $("#" + WORKSPACE_ROOT_ID).toggleClass(WORKSPACE_SINGLE_ROW_CLASS, !visible);
+                getWorkspaceStateTargets().toggleClass(WORKSPACE_SINGLE_ROW_CLASS, !visible);
+                // Read the layout back AFTER show/hide + class toggle have
+                // been applied, so outerHeight() reflects reality, not the
+                // previous frame's shape.
+                syncHeaderHeight(visible);
             }
 
             function findVisibleDialogForm() {
@@ -1472,6 +1568,11 @@
                 }
 
                 state.originalWrapper = originalWrapper;
+                // T020 (patch): detect NR5 vs NR4 layout once, at mount time.
+                state.headerTabsMode = !!originalWrapper.closest("#" + HEADER_TABS_ID).length;
+                $("#" + WORKSPACE_ROOT_ID).toggleClass(HEADER_MODE_CLASS, state.headerTabsMode);
+                debug("layout mode detected", { headerTabsMode: state.headerTabsMode });
+
 
                 state.container = $('<div id="' + CONTAINER_ID + '" class="nr-grouped-flows"></div>');
                 state.container.append('<ul id="' + GROUPS_UL_ID + '"></ul>');
@@ -1558,11 +1659,22 @@
                     }
                 });
 
+                // T020 (patch): mark the FLOWS row's own wrapper so CSS can
+                // shrink-wrap it to its actual tabs, instead of it stretching
+                // (native NR5 behaviour, fine for the GROUPS row which is
+                // meant to look like a full-width bar) to the same width as
+                // the groups row above it. When a group has only 1-2 flows,
+                // that stretched, opaquely-backgrounded wrapper was bleeding
+                // out over empty space to the right of the last flow tab -
+                // and since the whole thing is position:absolute, that empty
+                // painted rectangle was landing right on top of the canvas.
+                $("#" + FLOWS_UL_ID).closest(".red-ui-tabs").addClass("nr-grouped-flows-row-flows");
+
                 bindTabDomEvents();
                 patchEditFlowDialog();
                 state.originalWrapper.hide();
                 state.container.show();
-                $("#" + WORKSPACE_ROOT_ID).addClass(WORKSPACE_ENABLED_CLASS);
+                getWorkspaceStateTargets().addClass(WORKSPACE_ENABLED_CLASS);
                 return true;
             }
 
@@ -1628,8 +1740,13 @@
                 if (state.originalWrapper && state.originalWrapper.length) {
                     state.originalWrapper.show();
                 }
-                $("#" + WORKSPACE_ROOT_ID).removeClass(WORKSPACE_ENABLED_CLASS);
-                $("#" + WORKSPACE_ROOT_ID).removeClass(WORKSPACE_SINGLE_ROW_CLASS);
+                getWorkspaceStateTargets().removeClass(WORKSPACE_ENABLED_CLASS);
+                getWorkspaceStateTargets().removeClass(WORKSPACE_SINGLE_ROW_CLASS);
+                $("#" + WORKSPACE_ROOT_ID).removeClass(HEADER_MODE_CLASS);
+                if (state.headerTabsMode) {
+                    $("#" + EDITOR_ROOT_ID).css("--nr-grouped-flows-header-height-dual", "");
+                    $("#" + EDITOR_ROOT_ID).css("--nr-grouped-flows-header-height-single", "");
+                }
 
                 // T017: reset all state fields via factory instead of manual enumeration.
                 Object.assign(state, createInitialState());
@@ -1743,7 +1860,41 @@
         display: none;
     }
 
-    #red-ui-workspace.nr-grouped-flows-enabled #nr-grouped-flows {
+    /* NR5 only. #red-ui-header-tabs is position:static by default, so
+       #nr-grouped-flows's "position:absolute; left:0; right:0" below was
+       skipping right past it and anchoring to #red-ui-header instead - the
+       FULL header width, including the logo (left) and the Deploy button /
+       hamburger menu (#red-ui-header-toolbar, right), which live as
+       SIBLINGS of #red-ui-header-tabs, not inside it. Our two tab rows
+       have opaque backgrounds (core NR5 style: #red-ui-header-tabs
+       .red-ui-tabs { background: var(--red-ui-header-background) }) and
+       z-index:3, so they were painting straight over the Deploy button -
+       not removing it, just visually burying it. Giving #red-ui-header-tabs
+       its own containing block fixes the anchor to just its own natural
+       width (the flexible middle strip between logo and toolbar), which is
+       exactly where the native single-row tab bar lives too.
+
+       align-self:flex-start fixes a SEPARATE problem from the same root
+       cause: #red-ui-header has align-items:center, and #red-ui-header-tabs
+       itself has almost no intrinsic height (its real child, the native
+       tab <ul>, is display:none - our #nr-grouped-flows is position:absolute
+       and contributes nothing to its parent's own height either). With
+       align-items:center, that near-zero-height box was being vertically
+       CENTERED inside the now-taller header instead of pinned to its top -
+       so our whole two-row (or one-row) tab stack, anchored to it, floated
+       in the middle of the header with dead space above and below, instead
+       of sitting flush at the top like the native tab bar does. */
+    #red-ui-header-tabs.nr-grouped-flows-enabled {
+        position: relative;
+        align-self: flex-start;
+    }
+
+    /* NR4: tab bar lives inside #red-ui-workspace.
+       NR5: tab bar (and -shade) moved to #red-ui-header-tabs, a sibling of
+       #red-ui-workspace. We match both so one file works on either version;
+       whichever selector doesn't exist in the current DOM simply never matches. */
+    #red-ui-workspace.nr-grouped-flows-enabled #nr-grouped-flows,
+    #red-ui-header-tabs.nr-grouped-flows-enabled #nr-grouped-flows {
         position: absolute;
         top: 0;
         left: 0;
@@ -1761,25 +1912,98 @@
         margin-top: 2px;
     }
 
-    #red-ui-workspace.nr-grouped-flows-enabled {
+    /* NR5 only. .nr-grouped-flows-row-flows is added in JS to the FLOWS
+       row's own wrapper (not the GROUPS row above it). Without this, the
+       row's wrapper stretches to the full #nr-grouped-flows width by
+       default (align-items:stretch is the flex-column default) - correct
+       and desired for the GROUPS row (it's meant to look like a full-width
+       bar, matching the native single-row tab bar), but wrong here: when
+       the active group has few flows, the empty space to the right of the
+       last flow tab still carries the row's own opaque background
+       (core NR5 style, --red-ui-header-background) and, being inside a
+       position:absolute container, that empty painted rectangle lands
+       directly on top of the canvas below instead of just... not being
+       there. align-self:flex-start makes this ONE row hug its actual
+       tabs instead of stretching to match the groups row's width. */
+    #nr-grouped-flows > .red-ui-tabs.nr-grouped-flows-row-flows {
+        align-self: flex-start;
+    }
+
+    /* CSS custom properties do not cross sibling boundaries, only inherit
+       down the DOM tree - so this must be declared on BOTH possible hosts,
+       not just #red-ui-workspace, otherwise #red-ui-header-tabs's subtree
+       (the shade, on NR5) would see the vars as unset. */
+    #red-ui-workspace.nr-grouped-flows-enabled,
+    #red-ui-header-tabs.nr-grouped-flows-enabled {
         --nr-grouped-flows-tab-height-dual: 72px;
         --nr-grouped-flows-tab-height-single: 36px;
     }
 
-    #red-ui-workspace.nr-grouped-flows-enabled #red-ui-workspace-chart {
+    /* NR4 only. On NR4 the tab bar lives inside #red-ui-workspace itself,
+       so the chart needs its own internal top-offset to make room for it.
+       On NR5 (marked via .nr-grouped-flows-header-mode, set in JS once
+       headerTabsMode is detected) the tab bar lives in the header instead,
+       and #red-ui-workspace already starts lower because we grew
+       --red-ui-header-height at the #red-ui-editor level - applying this
+       offset there too would double-count and leave a dead gap at the
+       top of the canvas, so it's explicitly excluded. */
+    #red-ui-workspace.nr-grouped-flows-enabled:not(.nr-grouped-flows-header-mode) #red-ui-workspace-chart {
         top: var(--nr-grouped-flows-tab-height-dual);
     }
 
-    #red-ui-workspace.nr-grouped-flows-enabled #red-ui-workspace-tabs-shade {
+    #red-ui-workspace.nr-grouped-flows-enabled #red-ui-workspace-tabs-shade,
+    #red-ui-header-tabs.nr-grouped-flows-enabled #red-ui-workspace-tabs-shade {
         height: var(--nr-grouped-flows-tab-height-dual);
     }
 
-    #red-ui-workspace.nr-grouped-flows-enabled.nr-grouped-flows-single-row #red-ui-workspace-chart {
+    #red-ui-workspace.nr-grouped-flows-enabled:not(.nr-grouped-flows-header-mode).nr-grouped-flows-single-row #red-ui-workspace-chart {
         top: var(--nr-grouped-flows-tab-height-single);
     }
 
-    #red-ui-workspace.nr-grouped-flows-enabled.nr-grouped-flows-single-row #red-ui-workspace-tabs-shade {
+    #red-ui-workspace.nr-grouped-flows-enabled.nr-grouped-flows-single-row #red-ui-workspace-tabs-shade,
+    #red-ui-header-tabs.nr-grouped-flows-enabled.nr-grouped-flows-single-row #red-ui-workspace-tabs-shade {
         height: var(--nr-grouped-flows-tab-height-single);
+    }
+
+    /* NR5 only (class is only ever added to #red-ui-editor when JS detects
+       headerTabsMode - on NR4 this rule simply never matches anything).
+       #red-ui-header and #red-ui-main-container are both absolutely
+       positioned children of #red-ui-editor, and both read the SAME
+       --red-ui-header-height custom property: the header uses it as its
+       own height, main-container uses it as its top offset. Our second
+       tab row lives inside #red-ui-header and doesn't fit in the native
+       40px box, so it was spilling out onto the Palette/Workspace/Sidebar
+       row below. Growing the shared variable here grows the header AND
+       pushes everything below it down, in one consistent move - no need
+       to touch #red-ui-main-container, Palette, or sidebar CSS directly.
+
+       IMPORTANT: this must NOT be written as
+           --red-ui-header-height: calc(var(--red-ui-header-height) + 36px);
+       on this same selector. Per the CSS custom properties spec, a
+       property's dependency graph allows "edges from a custom property to
+       itself" - referencing --red-ui-header-height while ALSO redefining
+       --red-ui-header-height on the very same element is a genuine cycle,
+       not "read the inherited value first". A cycle makes the property
+       invalid at computed-value time; #red-ui-header's `height: var(...)`
+       then falls back to `auto`, and the header's real rendered height
+       becomes whatever the browser's flex auto-sizing happens to produce -
+       which is how a 36px tweak turned into the header eating the whole
+       viewport. Using separate, non-conflicting variable names below
+       avoids the cycle entirely. Override these two if 76px/40px don't
+       match your actual tab row heights pixel-for-pixel. */
+    #red-ui-editor {
+        --nr-grouped-flows-header-height-dual: 76px;
+        --nr-grouped-flows-header-height-single: 40px;
+    }
+    #red-ui-editor.nr-grouped-flows-enabled {
+        --red-ui-header-height: var(--nr-grouped-flows-header-height-dual);
+    }
+
+    /* Single-row mode: only the group row is shown, so the native NR5
+       header height already fits it. This selector is more specific than
+       the one above, so it wins the cascade whenever both classes are present. */
+    #red-ui-editor.nr-grouped-flows-enabled.nr-grouped-flows-single-row {
+        --red-ui-header-height: var(--nr-grouped-flows-header-height-single);
     }
 
 
@@ -1820,4 +2044,3 @@
     }
 
     </style>
-
