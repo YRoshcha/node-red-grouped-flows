@@ -1,5 +1,5 @@
 {
-  "name": "@yroshcha/node-red-plugin-grouped-flows"
+  "name": "@yroshcha/node-red-plugin-grouped-flows",
   "version": "1.0.0",
   "description": "Replaces the built-in Node-RED flows tab bar with a grouped two-tier tab bar to improve navigation of large Node-RED environments. Fork of @shockers/node-red-plugin-grouped-flows with Node-RED 5.x compatibility fixes.",
   "author": "Sven Hockers",
