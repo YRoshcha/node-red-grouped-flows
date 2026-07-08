@@ -1,0 +1,37 @@
+node-red-plugin-grouped-flows (YRoshcha fork)
+Copyright original work: Sven Hockers (SvenHockers)
+Copyright modifications: YRoshcha
+
+This product is a derivative work of:
+  node-red-grouped-flows
+  https://github.com/SvenHockers/node-red-grouped-flows
+  Copyright Sven Hockers, licensed under the Apache License, Version 2.0.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+See the LICENSE file for the full text of the License.
+
+--------------------------------------------------------------------------
+Summary of modifications from upstream v0.4.1
+--------------------------------------------------------------------------
+Added Node-RED 5.x editor compatibility, without breaking Node-RED 4.x
+support (single file works on either version). See CHANGES.md for the
+full, patch-by-patch technical writeup. In short, NR5 moved the tab bar
+out of #red-ui-workspace into a new #red-ui-header container that also
+hosts the logo and Deploy button, which this plugin's original DOM/CSS
+assumptions did not account for. Fixes include:
+  - Detect NR4 vs NR5 tab bar location at mount time
+  - Correct positioning context for the injected two-row tab bar on NR5
+  - Header height now grows to fit the two-row bar without breaking
+    the Palette/Workspace/Sidebar layout below it, measured at runtime
+    rather than hardcoded
+  - Avoid a CSS custom-property self-reference cycle that could cause
+    runaway layout sizing
+  - Prevent the injected tab bar from visually covering the Deploy
+    button / hamburger menu
+  - Prevent the flows-row's background from bleeding onto the canvas
+    when a group has few flows
