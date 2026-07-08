@@ -31,13 +31,13 @@ custom theme on unusual setups - see the CSS Customisation section below.
 Install via the Node-RED Palette Manager, or from the command line in your Node-RED user directory:
 
 ```
-npm install @YRoshcha/node-red-plugin-grouped-flows
+npm install @yroshcha/node-red-plugin-grouped-flows
 ```
 
 Or from git directly:
 
 ```
-npm install github:YRoshcha/node-red-grouped-flows
+npm install github:yroshcha/node-red-grouped-flows
 ```
 
 Restart Node-RED after installation.
