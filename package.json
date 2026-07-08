@@ -12,12 +12,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/uklon/node-red-grouped-flows.git"
+    "url": "git+https://github.com/YRoshcha/node-red-grouped-flows.git"
   },
   "bugs": {
-    "url": "https://github.com/uklon/node-red-grouped-flows/issues"
+    "url": "https://github.com/YRoshcha/node-red-grouped-flows/issues"
   },
-  "homepage": "https://github.com/uklon/node-red-grouped-flows#readme",
+  "homepage": "https://github.com/YRoshcha/node-red-grouped-flows#readme",
   "keywords": [
     "node-red",
     "node-red-plugin",
